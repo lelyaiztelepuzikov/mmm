@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TaskFlow — Трекер задач</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  
+  :root {
+    --bg:        #0e0f14;
+    --surface:   #161820;
+    --surface2:  #1e2030;
+    --border:    #2a2d3e;
+    --accent:    #6c63ff;
+    --accent2:   #a78bfa;
+    --green:     #34d399;
+    --red:       #f87171;
+    --yellow:    #fbbf24;
+    --text:      #e2e4f0;
+    --muted:     #6b7280;
+    --radius:    12px;
+  }
+
+  
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Syne', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+  }
+
+  
+  .orb {
+    position: fixed; border-radius: 50%; filter: blur(80px);
+    pointer-events: none; z-index: 0;
+  }
+  .orb-1 { width: 400px; height: 400px; background: rgba(108,99,255,.12); top: -100px; right: -80px; }
+  .orb-2 { width: 300px; height: 300px; background: rgba(167,139,250,.08); bottom: 100px; left: -60px; }
+
+  
+  .app {
+    position: relative; z-index: 1;
+    max-width: 720px; margin: 0 auto;
+    padding: 40px 20px 80px;
+  }
+
+  
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 40px;
+  }
+  .logo {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .logo-icon {
+    width: 38px; height: 38px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 10px;
+    display: grid; place-items: center;
+    font-size: 18px;
+  }
+  .logo-text { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+  .logo-text span { color: var(--accent2); }
+
+  .stats {
+    display: flex; gap: 16px;
+  }
+  .stat {
+    text-align: center;
+  }
+  .stat-val {
+    font-size: 22px; font-weight: 800;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    line-height: 1;
+  }
+  .stat-label { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .5px; text-transform: uppercase; }
+
+  
+  .form-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 28px;
+    position: relative;
+    overflow: hidden;
+  }
+  .form-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2), transparent);
+  }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .form-grid .span2 { grid-column: 1 / -1; }
+
+  .field label {
+    display: block; font-size: 11px; font-weight: 700;
+    color: var(--muted); text-transform: uppercase; letter-spacing: .8px;
+    margin-bottom: 6px;
+  }
+  .field input, .field select, .field textarea {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    padding: 10px 14px;
+    outline: none;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(108,99,255,.15);
+  }
+  .field input.error { border-color: var(--red); }
+  .field textarea { resize: none; height: 70px; }
+  .field select option { background: var(--surface2); }
+  .error-msg {
+    font-size: 11px; color: var(--red); margin-top: 4px;
+    display: none;
+  }
+  .error-msg.show { display: block; }
+
+  .btn-add {
+    width: 100%;
+    padding: 13px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none; border-radius: var(--radius);
+    color: #fff; font-family: 'Syne', sans-serif;
+    font-size: 15px; font-weight: 700;
+    cursor: pointer; letter-spacing: .3px;
+    transition: opacity .2s, transform .15s;
+    position: relative; overflow: hidden;
+  }
+  .btn-add:hover { opacity: .88; }
+  .btn-add:active { transform: scale(.98); }
+  .btn-add::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,.1), transparent);
+  }
+
+  
+  .filters {
+    display: flex; gap: 8px;
+    margin-bottom: 20px;
+  }
+  .filter-btn {
+    padding: 8px 18px;
+    border-radius: 50px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    font-family: 'Syne', sans-serif;
+    font-size: 13px; font-weight: 600;
+    cursor: pointer;
+    transition: all .2s;
+  }
+  .filter-btn:hover { border-color: var(--accent); color: var(--text); }
+  .filter-btn.active {
+    background: var(--accent); border-color: var(--accent);
+    color: #fff;
+  }
+
+  
+  .tasks-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .tasks-title { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; }
+  .clear-done-btn {
+    font-size: 12px; color: var(--muted); background: none;
+    border: none; cursor: pointer; font-family: 'Syne', sans-serif;
+    font-weight: 600; transition: color .2s;
+    padding: 0;
+  }
+  .clear-done-btn:hover { color: var(--red); }
+
+  .task-list { display: flex; flex-direction: column; gap: 10px; }
+
+  
+  .task-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 18px;
+    display: flex; align-items: flex-start; gap: 14px;
+    position: relative; overflow: hidden;
+    animation: slideIn .25s ease;
+    transition: border-color .2s, transform .15s;
+  }
+  .task-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .task-card.done { opacity: .55; }
+  .task-card.done .task-title { text-decoration: line-through; }
+  .task-card.overdue .task-deadline { color: var(--red); }
+  .task-card.overdue::before {
+    content: '';
+    position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: var(--red);
+    border-radius: 14px 0 0 14px;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeOut {
+    to { opacity: 0; transform: scale(.95); height: 0; padding: 0; margin: 0; }
+  }
+  .task-card.removing { animation: fadeOut .2s ease forwards; }
+
+  
+  .task-check {
+    width: 22px; height: 22px; min-width: 22px;
+    border-radius: 6px;
+    border: 2px solid var(--border);
+    background: var(--surface2);
+    cursor: pointer;
+    display: grid; place-items: center;
+    transition: all .2s;
+    margin-top: 1px;
+  }
+  .task-check:hover { border-color: var(--accent); }
+  .task-check.checked {
+    background: var(--green); border-color: var(--green);
+  }
+  .task-check.checked::after {
+    content: '✓'; color: #000; font-size: 13px; font-weight: 700;
+  }
+
+  
+  .task-body { flex: 1; min-width: 0; }
+  .task-top { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .task-title { font-size: 15px; font-weight: 700; word-break: break-word; }
+  .task-desc { font-size: 13px; color: var(--muted); margin-bottom: 8px; word-break: break-word; }
+
+  .task-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .priority-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; font-weight: 500;
+    padding: 2px 8px; border-radius: 50px;
+    text-transform: uppercase; letter-spacing: .5px;
+  }
+  .priority-badge.low    { background: rgba(52,211,153,.12); color: var(--green); border: 1px solid rgba(52,211,153,.25); }
+  .priority-badge.medium { background: rgba(251,191,36,.12);  color: var(--yellow); border: 1px solid rgba(251,191,36,.25); }
+  .priority-badge.high   { background: rgba(248,113,113,.12); color: var(--red);  border: 1px solid rgba(248,113,113,.25); }
+
+  .task-deadline {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: var(--muted);
+  }
+
+  
+  .btn-delete {
+    width: 28px; height: 28px; min-width: 28px;
+    border-radius: 8px; border: 1px solid transparent;
+    background: none; color: var(--muted);
+    cursor: pointer; font-size: 16px; line-height: 1;
+    display: grid; place-items: center;
+    transition: all .2s; margin-top: -2px;
+  }
+  .btn-delete:hover { background: rgba(248,113,113,.15); color: var(--red); border-color: rgba(248,113,113,.3); }
+
+  
+  .empty-state {
+    text-align: center; padding: 60px 0;
+  }
+  .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: .4; }
+  .empty-text { color: var(--muted); font-size: 15px; font-weight: 600; }
+
+  
+  .combo-field {
+    display: flex; gap: 8px;
+  }
+  .combo-field input[type="number"] {
+    width: 120px; min-width: 90px; flex-shrink: 0;
+  }
+  .combo-field input[type="text"] {
+    flex: 1;
+  }
+
+  
+  .finance-banner {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px; margin-bottom: 24px;
+  }
+  .fin-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 16px;
+    text-align: center;
+    position: relative; overflow: hidden;
+  }
+  .fin-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  }
+  .fin-card.earned::before  { background: var(--green); }
+  .fin-card.penalty::before { background: var(--red); }
+  .fin-card.balance::before { background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+  .fin-val {
+    font-size: 20px; font-weight: 800;
+    font-family: 'JetBrains Mono', monospace;
+    line-height: 1.2;
+  }
+  .fin-card.earned  .fin-val { color: var(--green); }
+  .fin-card.penalty .fin-val { color: var(--red); }
+  .fin-card.balance .fin-val {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .fin-card.balance.negative .fin-val { color: var(--red); background: none; -webkit-text-fill-color: var(--red); }
+  .fin-label {
+    font-size: 10px; color: var(--muted); font-weight: 700;
+    text-transform: uppercase; letter-spacing: .6px; margin-top: 3px;
+  }
+
+  
+  .task-finance {
+    display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;
+  }
+  .fin-pill {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; font-weight: 500;
+    padding: 2px 8px; border-radius: 50px;
+  }
+  .fin-pill.reward  { background: rgba(52,211,153,.12); color: var(--green); border: 1px solid rgba(52,211,153,.3); }
+  .fin-pill.penalty-pill { background: rgba(248,113,113,.12); color: var(--red); border: 1px solid rgba(248,113,113,.3); }
+  .fin-pill.earned-pill  { background: rgba(52,211,153,.2);  color: var(--green); border: 1px solid rgba(52,211,153,.5); font-weight: 700; }
+  .fin-pill.lost-pill    { background: rgba(248,113,113,.2); color: var(--red);   border: 1px solid rgba(248,113,113,.5); font-weight: 700; }
+
+  
+  .progress-wrap {
+    margin-bottom: 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+  }
+  .progress-label {
+    display: flex; justify-content: space-between;
+    font-size: 12px; color: var(--muted); font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .progress-bar-bg {
+    height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%; border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--green));
+    transition: width .4s cubic-bezier(.4,0,.2,1);
+  }
+
+  
+  .toast {
+    position: fixed; bottom: 28px; right: 28px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 12px 20px;
+    font-size: 13px; font-weight: 600; color: var(--text);
+    box-shadow: 0 8px 32px rgba(0,0,0,.4);
+    transform: translateY(80px); opacity: 0;
+    transition: all .3s cubic-bezier(.4,0,.2,1);
+    z-index: 100;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.success { border-color: var(--green); color: var(--green); }
+  .toast.error   { border-color: var(--red);   color: var(--red); }
+
+  
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+
+<div class="app">
+
+  
+  <header>
+    <div class="logo">
+      <div class="logo-icon">⚡</div>
+      <div class="logo-text">Task<span>Flow</span></div>
+    </div>
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-val" id="statTotal">0</div>
+        <div class="stat-label">Всего</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val" id="statActive">0</div>
+        <div class="stat-label">Активных</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val" id="statDone">0</div>
+        <div class="stat-label">Готово</div>
+      </div>
+    </div>
+  </header>
+
+  
+  <div class="form-card">
+    <div class="form-grid">
+      <div class="field span2">
+        <label>Название задачи *</label>
+        <input type="text" id="inputTitle" placeholder="Что нужно сделать?" maxlength="120">
+        <div class="error-msg" id="titleError">Введите название задачи</div>
+      </div>
+      <div class="field span2">
+        <label>Описание</label>
+        <textarea id="inputDesc" placeholder="Дополнительные детали..."></textarea>
+      </div>
+      <div class="field">
+        <label>Приоритет</label>
+        <select id="inputPriority">
+          <option value="low">🟢 Низкий</option>
+          <option value="medium" selected>🟡 Средний</option>
+          <option value="high">🔴 Высокий</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Дедлайн</label>
+        <input type="date" id="inputDeadline">
+      </div>
+      <div class="field span2">
+        <label>Награда за выполнение</label>
+        <div class="combo-field">
+          <input type="number" id="inputReward" placeholder="₽ сумма" min="0" step="1">
+          <input type="text"   id="inputRewardNote" placeholder="например: отпуск, пицца, выходной…" maxlength="200">
+        </div>
+      </div>
+      <div class="field span2">
+        <label>Штраф за просрочку</label>
+        <div class="combo-field">
+          <input type="number" id="inputPenalty" placeholder="₽ сумма" min="0" step="1">
+          <input type="text"   id="inputPenaltyNote" placeholder="например: без игр, 20 отжиманий…" maxlength="200">
+        </div>
+      </div>
+    </div>
+    <button class="btn-add" id="btnAdd">+ Добавить задачу</button>
+  </div>
+
+  
+  <div class="finance-banner" id="financeBanner" style="display:none">
+    <div class="fin-card earned">
+      <div class="fin-val" id="finEarned">0 ₽</div>
+      <div class="fin-label">Заработано</div>
+    </div>
+    <div class="fin-card penalty">
+      <div class="fin-val" id="finPenalty">0 ₽</div>
+      <div class="fin-label">Штрафы</div>
+    </div>
+    <div class="fin-card balance" id="finBalanceCard">
+      <div class="fin-val" id="finBalance">0 ₽</div>
+      <div class="fin-label">Баланс</div>
+    </div>
+  </div>
+
+  
+  <div class="progress-wrap" id="progressWrap" style="display:none">
+    <div class="progress-label">
+      <span>Прогресс</span>
+      <span id="progressText">0 / 0</span>
+    </div>
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+    </div>
+  </div>
+
+  
+  <div class="filters">
+    <button class="filter-btn active" data-filter="all">Все</button>
+    <button class="filter-btn" data-filter="active">Активные</button>
+    <button class="filter-btn" data-filter="done">Выполненные</button>
+  </div>
+
+  
+  <div class="tasks-header">
+    <span class="tasks-title" id="listLabel">Задачи</span>
+    <button class="clear-done-btn" id="btnClearDone">Очистить выполненные</button>
+  </div>
+  <div class="task-list" id="taskList"></div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+
+class Task {
+  
+  constructor(title, opts = {}) {
+    this.id          = opts.id          || `task_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    this.title       = title.trim();
+    this.description = opts.description || '';
+    this.priority    = opts.priority    || 'medium'; 
+    this.status      = opts.status      || 'active'; 
+    this.deadline    = opts.deadline    || null;      
+    this.reward      = opts.reward      || 0;          
+    this.rewardNote  = opts.rewardNote  || '';         
+    this.penalty     = opts.penalty     || 0;          
+    this.penaltyNote = opts.penaltyNote || '';         
+    this.completedAt = opts.completedAt || null;       
+    this.createdAt   = opts.createdAt   || new Date().toISOString();
+  }
+
+  
+  markDone()   { this.status = 'done'; }
+
+  
+  markActive() { this.status = 'active'; }
+
+  
+  toggle() {
+    if (this.status === 'done') {
+      this.markActive();
+      this.completedAt = null;
+    } else {
+      this.markDone();
+      this.completedAt = new Date().toISOString();
+    }
+  }
+
+  
+  isOverdue() {
+    if (!this.deadline || this.status === 'done') return false;
+    return new Date(this.deadline) < new Date(new Date().toDateString());
+  }
+
+  
+  toJSON() {
+    return {
+      id: this.id, title: this.title, description: this.description,
+      priority: this.priority, status: this.status,
+      deadline: this.deadline, createdAt: this.createdAt,
+      reward: this.reward, rewardNote: this.rewardNote,
+      penalty: this.penalty, penaltyNote: this.penaltyNote, completedAt: this.completedAt,
+    };
+  }
+
+  
+  static fromJSON(data) {
+    return new Task(data.title, data);
+  }
+}
+
+class StorageService {
+  constructor() {
+    this.KEY = 'taskflow_v1';
+  }
+
+  
+  save(tasks) {
+    try {
+      localStorage.setItem(this.KEY, JSON.stringify(tasks.map(t => t.toJSON())));
+    } catch (e) {
+      console.error('[StorageService] Ошибка сохранения:', e);
+    }
+  }
+
+  
+  load() {
+    try {
+      const raw = localStorage.getItem(this.KEY);
+      if (!raw) return [];
+      return JSON.parse(raw).map(Task.fromJSON);
+    } catch (e) {
+      console.error('[StorageService] Ошибка загрузки:', e);
+      return [];
+    }
+  }
+
+  
+  clear() {
+    localStorage.removeItem(this.KEY);
+  }
+}
+
+class TaskManager {
+  constructor(storage) {
+    this.storage = storage;
+    this.tasks   = this.storage.load(); 
+  }
+
+  
+  addTask(title, opts = {}) {
+    if (!title || !title.trim()) throw new Error('Название задачи не может быть пустым');
+    const task = new Task(title, opts);
+    this.tasks.unshift(task); 
+    this.storage.save(this.tasks);
+    return task;
+  }
+
+  
+  deleteTask(id) {
+    const before = this.tasks.length;
+    this.tasks = this.tasks.filter(t => t.id !== id);
+    if (this.tasks.length === before) throw new Error(`Задача ${id} не найдена`);
+    this.storage.save(this.tasks);
+  }
+
+  
+  toggleDone(id) {
+    const task = this.tasks.find(t => t.id === id);
+    if (!task) throw new Error(`Задача ${id} не найдена`);
+    task.toggle();
+    this.storage.save(this.tasks);
+    return task;
+  }
+
+  
+  clearDone() {
+    const count = this.tasks.filter(t => t.status === 'done').length;
+    this.tasks = this.tasks.filter(t => t.status !== 'done');
+    this.storage.save(this.tasks);
+    return count;
+  }
+
+  
+  getAll() { return this.tasks; }
+
+  
+  getByStatus(status) { return this.tasks.filter(t => t.status === status); }
+
+  
+  getStats() {
+    const total  = this.tasks.length;
+    const done   = this.tasks.filter(t => t.status === 'done').length;
+    const active = total - done;
+    return { total, done, active };
+  }
+
+  
+  getFinanceStats() {
+    let earned = 0;
+    let penaltyTotal = 0;
+    for (const task of this.tasks) {
+      if (task.status === 'done' && task.reward > 0) {
+        const onTime = !task.deadline || !task.completedAt ||
+          new Date(task.completedAt) <= new Date(task.deadline + 'T23:59:59');
+        if (onTime) earned += Number(task.reward);
+      }
+      if (task.penalty > 0) {
+        const isOverdueActive = task.status === 'active' && task.deadline &&
+          new Date(task.deadline) < new Date(new Date().toDateString());
+        const isOverdueDone = task.status === 'done' && task.deadline && task.completedAt &&
+          new Date(task.completedAt) > new Date(task.deadline + 'T23:59:59');
+        if (isOverdueActive || isOverdueDone) penaltyTotal += Number(task.penalty);
+      }
+    }
+    return { earned, penaltyTotal, balance: earned - penaltyTotal };
+  }
+}
+
+class UIController {
+  constructor(manager) {
+    this.manager       = manager;
+    this.currentFilter = 'all';
+    this._toastTimer   = null;
+  }
+
+  
+  init() {
+    
+    document.getElementById('btnAdd').addEventListener('click', () => this.handleAdd());
+
+    
+    document.getElementById('inputTitle').addEventListener('keydown', e => {
+      if (e.key === 'Enter') this.handleAdd();
+    });
+
+    
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => this.setFilter(btn.dataset.filter));
+    });
+
+    
+    document.getElementById('btnClearDone').addEventListener('click', () => this.handleClearDone());
+
+    
+    this.renderAll();
+  }
+
+  
+  handleAdd() {
+    const title    = document.getElementById('inputTitle').value;
+    const desc     = document.getElementById('inputDesc').value;
+    const priority = document.getElementById('inputPriority').value;
+    const deadline = document.getElementById('inputDeadline').value;
+    const errEl    = document.getElementById('titleError');
+    const inputEl  = document.getElementById('inputTitle');
+
+    
+    if (!title.trim()) {
+      inputEl.classList.add('error');
+      errEl.classList.add('show');
+      inputEl.focus();
+      return;
+    }
+
+    inputEl.classList.remove('error');
+    errEl.classList.remove('show');
+
+    const reward      = parseInt(document.getElementById('inputReward').value)      || 0;
+    const rewardNote  = document.getElementById('inputRewardNote').value.trim();
+    const penalty     = parseInt(document.getElementById('inputPenalty').value)     || 0;
+    const penaltyNote = document.getElementById('inputPenaltyNote').value.trim();
+
+    try {
+      this.manager.addTask(title, {
+        description: desc,
+        priority,
+        deadline: deadline || null,
+        reward,
+        rewardNote,
+        penalty,
+        penaltyNote,
+      });
+
+      
+      document.getElementById('inputTitle').value    = '';
+      document.getElementById('inputDesc').value     = '';
+      document.getElementById('inputPriority').value = 'medium';
+      document.getElementById('inputDeadline').value = '';
+      document.getElementById('inputReward').value      = '';
+      document.getElementById('inputRewardNote').value  = '';
+      document.getElementById('inputPenalty').value     = '';
+      document.getElementById('inputPenaltyNote').value = '';
+
+      this.renderAll();
+      this.showToast('Задача добавлена ✓', 'success');
+    } catch (e) {
+      this.showToast(e.message, 'error');
+    }
+  }
+
+  
+  handleDelete(id) {
+    const card = document.querySelector(`[data-id="${id}"]`);
+    if (card) {
+      card.classList.add('removing');
+      card.addEventListener('animationend', () => {
+        this.manager.deleteTask(id);
+        this.renderAll();
+      }, { once: true });
+    }
+  }
+
+  
+  handleToggle(id) {
+    this.manager.toggleDone(id);
+    this.renderAll();
+  }
+
+  
+  handleClearDone() {
+    const count = this.manager.clearDone();
+    this.renderAll();
+    if (count > 0) this.showToast(`Удалено ${count} выполненных задач`, 'success');
+  }
+
+  
+  setFilter(filter) {
+    this.currentFilter = filter;
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.filter === filter);
+    });
+    this.renderTasks();
+  }
+
+  
+  renderAll() {
+    this.renderTasks();
+    this.renderStats();
+    this.renderProgress();
+    this.renderFinance();
+  }
+
+  
+  renderTasks() {
+    const filter = this.currentFilter;
+    const tasks  = filter === 'all'    ? this.manager.getAll()
+                 : filter === 'active' ? this.manager.getByStatus('active')
+                 :                       this.manager.getByStatus('done');
+
+    const container = document.getElementById('taskList');
+
+    
+    const labels = { all: 'Все задачи', active: 'Активные', done: 'Выполненные' };
+    document.getElementById('listLabel').textContent = labels[filter];
+
+    if (tasks.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">${filter === 'done' ? '🏆' : '📋'}</div>
+          <div class="empty-text">${filter === 'done' ? 'Нет выполненных задач' : 'Список пуст — добавьте первую задачу!'}</div>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = tasks.map(task => this.renderTaskCard(task)).join('');
+
+    
+    tasks.forEach(task => {
+      document.querySelector(`[data-id="${task.id}"] .task-check`)
+        .addEventListener('click', () => this.handleToggle(task.id));
+      document.querySelector(`[data-id="${task.id}"] .btn-delete`)
+        .addEventListener('click', () => this.handleDelete(task.id));
+    });
+  }
+
+  
+  renderTaskCard(task) {
+    const priorityLabel = { low: 'Низкий', medium: 'Средний', high: 'Высокий' };
+    const deadlineStr   = task.deadline
+      ? `📅 ${new Date(task.deadline).toLocaleDateString('ru-RU')}`
+      : '';
+    const overdueClass  = task.isOverdue() ? 'overdue' : '';
+    const doneClass     = task.status === 'done' ? 'done' : '';
+
+    
+    let finHtml = '';
+    if (task.reward > 0 || task.penalty > 0) {
+      finHtml = '<div class="task-finance">';
+      if (task.reward > 0 || task.rewardNote) {
+        const rAmt = task.reward > 0 ? `+${Number(task.reward).toLocaleString('ru-RU')} ₽` : '';
+        const rNote = task.rewardNote ? `<span class="fin-pill-note">${task.rewardNote}</span>` : '';
+        if (task.status === 'done') {
+          const onTime = !task.deadline || !task.completedAt ||
+            new Date(task.completedAt) <= new Date(task.deadline + 'T23:59:59');
+          if (onTime) {
+            finHtml += `<span class="fin-pill earned-pill">✓ ${[rAmt, task.rewardNote].filter(Boolean).join(' • ')} получено</span>`;
+          } else {
+            finHtml += `<span class="fin-pill lost-pill">❌ ${[rAmt, task.rewardNote].filter(Boolean).join(' • ')} не получено</span>`;
+          }
+        } else {
+          finHtml += `<span class="fin-pill reward">${[rAmt, task.rewardNote].filter(Boolean).join(' • ')}</span>`;
+        }
+      }
+      if (task.penalty > 0 || task.penaltyNote) {
+        const pAmt = task.penalty > 0 ? `-${Number(task.penalty).toLocaleString('ru-RU')} ₽` : '';
+        const isOverdueActive = task.status === 'active' && task.deadline &&
+          new Date(task.deadline) < new Date(new Date().toDateString());
+        const isOverdueDone = task.status === 'done' && task.deadline && task.completedAt &&
+          new Date(task.completedAt) > new Date(task.deadline + 'T23:59:59');
+        if (isOverdueActive || isOverdueDone) {
+          finHtml += `<span class="fin-pill lost-pill">⚠ ${[pAmt, task.penaltyNote].filter(Boolean).join(' • ')} штраф</span>`;
+        } else {
+          finHtml += `<span class="fin-pill penalty-pill">${[pAmt, task.penaltyNote].filter(Boolean).join(' • ')}</span>`;
+        }
+      }
+      finHtml += '</div>';
+    }
+
+    return `
+      <div class="task-card ${doneClass} ${overdueClass}" data-id="${task.id}">
+        <div class="task-check ${task.status === 'done' ? 'checked' : ''}"></div>
+        <div class="task-body">
+          <div class="task-title">${this.escapeHtml(task.title)}</div>
+          ${task.description ? `<div class="task-desc">${this.escapeHtml(task.description)}</div>` : ''}
+          <div class="task-meta">
+            <span class="priority-badge ${task.priority}">${priorityLabel[task.priority]}</span>
+            ${deadlineStr ? `<span class="task-deadline">${deadlineStr}</span>` : ''}
+            ${task.isOverdue() ? '<span class="task-deadline" style="color:var(--red)">⚠ Просрочено</span>' : ''}
+          </div>
+          ${finHtml}
+        </div>
+        <button class="btn-delete" title="Удалить задачу">&times;</button>
+      </div>`;
+  }
+
+  
+  renderStats() {
+    const { total, active, done } = this.manager.getStats();
+    document.getElementById('statTotal').textContent  = total;
+    document.getElementById('statActive').textContent = active;
+    document.getElementById('statDone').textContent   = done;
+  }
+
+  
+  renderProgress() {
+    const { total, done } = this.manager.getStats();
+    const wrap = document.getElementById('progressWrap');
+
+    if (total === 0) { wrap.style.display = 'none'; return; }
+
+    wrap.style.display = 'block';
+    const pct = Math.round((done / total) * 100);
+    document.getElementById('progressFill').style.width = `${pct}%`;
+    document.getElementById('progressText').textContent = `${done} / ${total}`;
+  }
+
+  
+  renderFinance() {
+    const { earned, penaltyTotal, balance } = this.manager.getFinanceStats();
+    const hasFinance = this.manager.getAll().some(t => t.reward > 0 || t.penalty > 0 || t.rewardNote || t.penaltyNote);
+    const banner = document.getElementById('financeBanner');
+    if (!hasFinance) { banner.style.display = 'none'; return; }
+    banner.style.display = 'grid';
+    document.getElementById('finEarned').textContent  = earned.toLocaleString('ru-RU') + ' ₽';
+    document.getElementById('finPenalty').textContent = penaltyTotal.toLocaleString('ru-RU') + ' ₽';
+    const sign = balance >= 0 ? '+' : '';
+    document.getElementById('finBalance').textContent = sign + balance.toLocaleString('ru-RU') + ' ₽';
+    document.getElementById('finBalanceCard').classList.toggle('negative', balance < 0);
+  }
+
+  
+  showToast(message, type = '') {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.className   = `toast ${type} show`;
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => {
+      toast.classList.remove('show');
+    }, 2800);
+  }
+
+  
+  escapeHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;')
+              .replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+              .replace(/'/g,'&#039;');
+  }
+}
+
+const storage    = new StorageService();
+const manager    = new TaskManager(storage);
+const controller = new UIController(manager);
+
+document.addEventListener('DOMContentLoaded', () => controller.init());
+</script>
+</body>
+</html>
